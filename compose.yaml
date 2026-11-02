@@ -1,0 +1,103 @@
+name: puskesmas-scraper-rust
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: puskesmas
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run prepare first}
+      POSTGRES_DB: puskesmas_rust
+    ports: ["127.0.0.1:5435:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U puskesmas -d puskesmas_rust"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  app:
+    image: puskesmas-scraper:0.1.2
+    init: true
+    environment:
+      DATABASE_URL: postgresql://puskesmas:${POSTGRES_PASSWORD}@postgres:5432/puskesmas_rust
+      SYSTEM_DATA_DIR: /data
+      SYSTEM_BIND: 0.0.0.0:8788
+      SYSTEM_MAX_CONCURRENT_JOBS: "${SYSTEM_MAX_CONCURRENT_JOBS:-1}"
+      # Report engine for every Puskesmas without its own report_engine override; rust when unset.
+      SCRAPER_REPORT_ENGINE: "${SCRAPER_REPORT_ENGINE:-}"
+      # Per-visit scrape engine for every Puskesmas without its own scrape_engine override; rust when unset.
+      SCRAPER_ENGINE: "${SCRAPER_ENGINE:-}"
+      SYSTEM_ALLOW_PRIVATE_DESTINATIONS: ${ALLOW_PRIVATE_DESTINATIONS:-false}
+      SYSTEM_ENABLE_DORMANT_FEATURES: "${SYSTEM_ENABLE_DORMANT_FEATURES:-false}"
+      SYSTEM_ENABLE_LOOP_AGENT: "${SYSTEM_ENABLE_LOOP_AGENT:-false}"
+      SYSTEM_ENABLE_DISCOVERY: "${SYSTEM_ENABLE_DISCOVERY:-false}"
+      DUMMY_ENDPOINT: ${DUMMY_ENDPOINT:-http://dummy:8110/ingest}
+      RUST_LOG: ${RUST_LOG:-info}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports: ["127.0.0.1:${WEB_PORT:-3003}:8788"]
+    volumes: [runtime_data:/data]
+    tmpfs: ["/tmp:rw,nosuid,size=256m,mode=1777"]
+    read_only: true
+    cap_drop: [ALL]
+    # The root controller must terminate its UID 10002 browser worker on cancel/deadline.
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, KILL]
+    shm_size: 512m
+    mem_limit: ${APP_MEMORY_LIMIT:-2g}
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  loop-worker:
+    # Off by default: needs an image built with the loop-agent feature.
+    profiles: [loop-agent]
+    image: puskesmas-scraper:0.1.2
+    command: [loop-worker]
+    init: true
+    environment:
+      SYSTEM_ENABLE_LOOP_AGENT: "${SYSTEM_ENABLE_LOOP_AGENT:-false}"
+      DATABASE_URL: postgresql://puskesmas:${POSTGRES_PASSWORD}@postgres:5432/puskesmas_rust
+      # Candidate code gets its own UID, so /data/profiles of production scrapes stay unreadable.
+      SCRAPER_CHILD_UID: "10003"
+      SYSTEM_DATA_DIR: /data
+      SYSTEM_ALLOW_PRIVATE_DESTINATIONS: ${ALLOW_PRIVATE_DESTINATIONS:-false}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes: [runtime_data:/data]
+    tmpfs: ["/tmp:rw,nosuid,size=256m,mode=1777"]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, KILL]
+    shm_size: 512m
+    mem_limit: ${LOOP_MEMORY_LIMIT:-1536m}
+    healthcheck: {disable: true}
+    depends_on:
+      app: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  dummy:
+    profiles: [test]
+    image: puskesmas-scraper:0.1.2
+    command: [dummy]
+    environment: {DUMMY_BIND: "0.0.0.0:8110", DUMMY_DATA_DIR: "/data"}
+    volumes: [dummy_data:/data]
+    ports: ["127.0.0.1:8111:8110"]
+    read_only: true
+    cap_drop: [ALL]
+    mem_limit: 64m
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8110/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  runtime_data:
+  dummy_data:

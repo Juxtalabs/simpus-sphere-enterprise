@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+*.tar.gz
+*.zip
+*.dump
+/src/
+*.rs
+Cargo.*
+rust-toolchain*
+Dockerfile
