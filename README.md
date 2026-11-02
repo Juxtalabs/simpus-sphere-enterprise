@@ -122,33 +122,3 @@ docker compose --env-file .env.local --profile loop-agent stop loop-worker
 ```
 
 Binary Rust tetap dapat dianalisis; distribusi binary tidak menjamin perlindungan mutlak terhadap rekayasa balik. Source Rust tetap dikelola pada repository pengembangan internal.
-
-## Perubahan versi 0.1.2
-
-- Cron memiliki jenis baru **Scraping laporan lalu POST ke API**: formulir laporan harian untuk tanggal jadwal, dan pada tanggal 1 juga formulir bulanan bulan yang baru selesai. Jadwal yang sudah ada tidak berubah.
-- Jadwal yang mengirim mengambil ulang otomatis, dalam job terpisah, tanggal 7 hari terakhir yang run-nya gagal atau terlewati, dan tanggal kunjungan yang masih memiliki record tidak lengkap.
-- Caddy tidak lagi disertakan. HTTPS disediakan reverse proxy Anda, misalnya nginx dengan certbot, dan `SCRAPER_DOMAIN` tidak lagi dipakai.
-- Versi ini menambah migrasi database (`0024`): kembali ke versi lama memerlukan restore database dari backup.
-
-Release ini menyediakan image Linux/amd64 `puskesmas-scraper:0.1.2` dan alias `puskesmas-scraper:rust-hybrid`. Compose memakai tag versi tetap. Saat upgrade, perbarui juga Compose dan README dari paket deployment; jangan hanya memuat image baru dengan Compose lama. Pertahankan `.env.local`, database, volume runtime, dan master key.
-
-## Perubahan versi 0.2.26
-
-- Scraping per kunjungan dan semua laporan, termasuk Laporan Pelayanan KIA, kini dibaca oleh binary Rust. Python hanya menjalankan login Scrapling.
-- Loop Agent dan Discovery tidak disertakan; menu dan URL-nya menjawab 404. Service `loop-worker` tidak lagi berjalan.
-- Varian portal melalui `endpoint_variants`/`schema_variants` di `simpus_rules.json` belum didukung; job dengan varian seperti itu gagal dengan pesan yang jelas.
-- ID Puskesmas pada API Ingest (`X-Puskesmas-Id`) kini berasal dari akun SIMPUS, sehingga pengguna berbeda dengan login yang sama memperoleh ID yang sama. Kode Puskesmas dikirim sebagai `puskesmas_code`, dan nama sebagai `puskesmas_name`.
-- ID pasien pada API Ingest kini sama untuk NIK yang sama di semua pengguna. Nilai `patient_key` yang sudah pernah dikirim berubah, sehingga penerima perlu memetakan ulang.
-- Kunjungan yang terbaca tidak lengkap tidak dikirim dan tidak menimpa data lengkap; job selesai dengan penanda `incomplete_records`, dan alasannya tercatat di log job.
-- Versi ini menambah migrasi database (`0023`): kembali ke versi lama memerlukan restore database dari backup.
-
-## Perubahan versi 0.2.0
-
-- Pengambilan pasien mencakup data medis di luar CKG, mengikuti layanan dan data yang tersedia pada portal sumber.
-- Export per pasien, JSON dengan nama field yang jelas, serta FHIR R4 JSON/NDJSON. Identifier dan referensi FHIR memakai UUID stabil dengan pemisahan per akun, Puskesmas, dan sumber. Data sumber dan kesenjangan pemetaan tetap dapat ditelusuri; export parsial tidak menyatakan semua persyaratan profil nasional sudah terpenuhi.
-- Scrape ulang memperbarui record kunjungan pasien yang sama pada tanggal yang sama. Kunjungan, tanggal, atau akun berbeda tetap dipisahkan.
-- Timeout scraping 90 menit per tanggal kunjungan. Rentang tanggal memakai timer baru tiap tanggal; timeout mempertahankan data tersimpan lalu melanjutkan tanggal berikutnya. Job tetap gagal bila ada tanggal gagal; rincian tercatat di log. Cancel menghentikan sisa rentang.
-- Admin dapat membuka **Pengaturan scraper** (`/scraper-settings`) untuk default worker pasien dan tab per pasien. Default 5 x 3; masing-masing 1–8 dengan perkalian maksimal 32. Berlaku untuk job baru tanpa restart. Mulai dengan 2 x 2 pada perangkat terbatas dan sesuaikan berdasarkan pengamatan CPU/RAM serta respons portal.
-- Deployment mendukung `SYSTEM_MAX_CONCURRENT_JOBS` (1–4, default 1) dan `APP_MEMORY_LIMIT` (default `2g`). Perubahan parameter deployment memerlukan pembuatan ulang container ketika job tidak aktif.
-- Controller container memakai capability `KILL` agar dapat menghentikan worker Linux UID 10002 pada cancel/timeout. UID worker adalah akun proses, terpisah dari identifier pasien.
-- Halaman record menyediakan JSON berindentasi, warna sintaks, buka/lipat struktur, tampilan teks, dan salin JSON tanpa mengubah angka atau identifier.
